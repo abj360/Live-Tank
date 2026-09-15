@@ -54,6 +54,14 @@ body {
 .dash-chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(79,195,247,0.22); animation: pulse 1.8s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(79,195,247,0.08); opacity: 0.85; } }
 
+.dock-scrim {
+  position: fixed; inset: 0; z-index: 50; pointer-events: none;
+  background: rgba(4, 8, 22, 0.58);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  opacity: 0; transition: opacity 420ms var(--ease-out);
+}
+body.dock-dim .dock-scrim { opacity: 1; }
+body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
 .dock {
   position: fixed; top: 50%; left: 16px; transform: translateY(-50%); z-index: 61;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -61,11 +69,39 @@ body {
   background: var(--glass); border: 1px solid var(--rule);
   box-shadow: 0 12px 40px -18px rgba(0,0,0,0.65);
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  transition: padding 280ms var(--ease-out), gap 280ms var(--ease-out), border-radius 280ms var(--ease-out),
+    background 380ms var(--ease-out), border-color 380ms var(--ease-out), box-shadow 380ms var(--ease-out);
 }
+.dock-curve {
+  position: absolute; left: 4px; top: 8px; width: 92px; height: calc(100% - 16px);
+  pointer-events: none; opacity: 0; overflow: visible;
+  transition: opacity 360ms var(--ease-out);
+}
+.dock-curve path {
+  fill: none; stroke: rgba(79,195,247,0.38); stroke-width: 2; stroke-linecap: round;
+}
+.dock.is-grown {
+  padding: 18px 14px; gap: 12px; border-radius: 32px;
+  background: rgba(10, 17, 40, 0.78);
+  box-shadow: 0 18px 48px -16px rgba(79,195,247,0.45);
+}
+.dock.is-grown a { width: 52px; height: 52px; border-radius: 16px; }
+.dock.is-grown a svg { width: 22px; height: 22px; }
+.dock.is-arc {
+  padding: 22px 18px 22px 14px; gap: 34px;
+  background: transparent; border-color: transparent; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.dock.is-arc .dock-curve { opacity: 1; }
+.dock.is-arc a:nth-child(2) { transform: translateX(10px); }
+.dock.is-arc a:nth-child(3) { transform: translateX(62px); }
+.dock.is-arc a:nth-child(4) { transform: translateX(10px); }
+.dock.is-arc a::after { opacity: 1; }
 .dock a {
   position: relative; width: 44px; height: 44px; border-radius: 14px;
-  display: grid; place-items: center; color: var(--muted); text-decoration: none;
-  transition: background 180ms var(--ease-out), color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
+  display: grid; place-items: center; color: var(--muted); text-decoration: none; z-index: 1;
+  transition: background 180ms var(--ease-out), color 180ms var(--ease-out), box-shadow 180ms var(--ease-out),
+    width 280ms var(--ease-out), height 280ms var(--ease-out), transform 420ms var(--ease-out), border-radius 280ms var(--ease-out);
 }
 .dock a svg { width: 20px; height: 20px; }
 .dock a:hover, .dock a:focus-visible { color: var(--accent); background: rgba(79,195,247,0.12); }
@@ -90,6 +126,13 @@ body {
     flex-direction: row; justify-content: space-around;
     width: calc(100% - 24px); max-width: 420px; padding: 8px 10px;
   }
+  .dock-curve { display: none; }
+  .dock.is-grown { padding: 12px 16px; gap: 10px; max-width: 480px; }
+  .dock.is-grown a { width: auto; min-width: 72px; height: auto; }
+  .dock.is-arc { gap: 22px; padding: 14px 18px 28px; }
+  .dock.is-arc a:nth-child(2) { transform: translateY(-28px); }
+  .dock.is-arc a:nth-child(3) { transform: translateY(-58px); }
+  .dock.is-arc a:nth-child(4) { transform: translateY(-28px); }
   .dock a::after { display: none; }
   .dock a { width: 72px; height: auto; padding: 6px 4px 5px; gap: 3px; }
   .dock .sr-only {
@@ -216,6 +259,8 @@ body {
   .dash-chip-dot { animation: none; }
   .kpi-card:hover, .kpi-card.is-active { transform: none; }
   .chart-panel.is-updating .activity-chart { animation: none; }
+  .dock, .dock a, .dock-scrim, body.dock-dim .dash { transition: none; }
+  .dock.is-arc a:nth-child(n) { transform: none; }
 }
 </style>
 </head>
@@ -229,7 +274,11 @@ body {
   <div class="dash-chip" id="updatedChip"><span class="dash-chip-dot" aria-hidden="true"></span>Last updated Sep 15, 2026 · 12:00</div>
 </header>
 
-<nav class="dock" aria-label="Sections">
+<div class="dock-scrim" id="dockScrim" aria-hidden="true"></div>
+<nav class="dock" id="dock" aria-label="Sections">
+  <svg class="dock-curve" viewBox="0 0 88 260" aria-hidden="true" focusable="false">
+    <path d="M22 16 C 78 72, 78 188, 22 244"/>
+  </svg>
   <a href="#stats" data-section="stats" data-label="Stats" class="is-active" aria-current="page">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 18V10M10 18V6M16 18v-7M22 18V8"/></svg>
     <span class="sr-only">Stats</span>
@@ -460,6 +509,37 @@ dockLinks.forEach(function (link) {
     setDockActive(link.getAttribute('data-section'));
   });
 });
+
+(function setupDockHover() {
+  const dock = document.getElementById('dock');
+  if (!dock) return;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let holdTimer = null;
+
+  function growDock() {
+    dock.classList.add('is-grown');
+    if (reduceMotion) return;
+    window.clearTimeout(holdTimer);
+    holdTimer = window.setTimeout(function () {
+      dock.classList.add('is-arc');
+      document.body.classList.add('dock-dim');
+    }, 850);
+  }
+
+  function resetDock() {
+    window.clearTimeout(holdTimer);
+    holdTimer = null;
+    dock.classList.remove('is-grown', 'is-arc');
+    document.body.classList.remove('dock-dim');
+  }
+
+  dock.addEventListener('pointerenter', growDock);
+  dock.addEventListener('pointerleave', resetDock);
+  dock.addEventListener('focusin', growDock);
+  dock.addEventListener('focusout', function (e) {
+    if (!dock.contains(e.relatedTarget)) resetDock();
+  });
+})();
 
 function escapeHtml(value) {
   return String(value == null ? '' : value)

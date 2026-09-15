@@ -22,6 +22,8 @@ class LiveTankPageTests(unittest.TestCase):
         self.assertIn('data-metric="view"', html)
         self.assertIn('data-metric="movement"', html)
         self.assertIn('class="dock"', html)
+        self.assertIn('id="dockScrim"', html)
+        self.assertIn('setupDockHover', html)
         self.assertIn('href="#stats"', html)
         self.assertIn('id="activity"', html)
         self.assertIn('id="log"', html)
