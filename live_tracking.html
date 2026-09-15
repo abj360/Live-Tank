@@ -149,6 +149,9 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
 .dash-sub { margin-top: 6px; font-size: 0.88rem; color: var(--muted); }
 
 .panel { background: var(--card); border: 1px solid var(--rule); padding: 20px; border-radius: 22px; box-shadow: var(--glow); }
+.stat-panel { position: relative; cursor: pointer; transition: border-color 200ms var(--ease-out), transform 200ms var(--ease-out); }
+.stat-panel:hover { border-color: rgba(79,195,247,0.45); transform: translateY(-2px); }
+.stat-panel .panel-title, .stat-panel .panel-head { padding-right: 92px; }
 .panel-title { font-family: var(--ui); font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-ghost); margin-bottom: 14px; }
 
 .kpi-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
@@ -167,6 +170,22 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
 }
 .kpi-card.is-active .kpi-label { color: var(--accent); }
 .kpi-card::after { content: ""; position: absolute; right: -30px; top: -40px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, rgba(79,195,247,0.16), transparent 70%); pointer-events: none; }
+.kpi-open {
+  position: absolute; top: 14px; right: 14px; z-index: 3;
+  padding: 6px 10px; border-radius: 999px;
+  border: 1px solid rgba(79,195,247,0.5);
+  background: rgba(10,17,40,0.9); color: var(--accent);
+  font-family: var(--ui); font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  opacity: 0; transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+}
+.kpi-card:hover .kpi-open, .kpi-card:focus-visible .kpi-open, .kpi-card.is-active:focus .kpi-open,
+.stat-panel:hover .kpi-open, .stat-panel:focus-visible .kpi-open {
+  opacity: 1; transform: none;
+}
+.kpi-card:hover .kpi-icon, .kpi-card:focus-visible .kpi-icon { opacity: 0.18; }
 .kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .kpi-label { font-family: var(--ui); font-size: 0.74rem; font-weight: 600; color: var(--muted); }
 .kpi-icon { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: linear-gradient(180deg, rgba(79,195,247,0.28), rgba(139,124,255,0.18)); color: var(--accent); }
@@ -249,6 +268,62 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
 .bar-row b { font-size: 0.72rem; color: #eaf7ff; text-align: right; font-weight: 700; }
 .kpi-card.is-loading .kpi-value, .kpi-card.is-loading .kpi-trend { opacity: 0.45; }
 
+.kpi-modal {
+  position: fixed; inset: 0; z-index: 80;
+  display: grid; place-items: center; padding: 24px;
+}
+.kpi-modal[hidden] { display: none !important; }
+.kpi-modal-scrim {
+  position: absolute; inset: 0;
+  background: rgba(4, 8, 22, 0.62);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.kpi-modal-card {
+  position: relative; z-index: 1; width: min(720px, calc(100vw - 40px));
+  max-height: calc(100vh - 48px); overflow: auto;
+  background: var(--card); border: 1px solid rgba(79,195,247,0.45);
+  border-radius: 28px; padding: 28px 28px 24px;
+  box-shadow: 0 28px 80px -24px rgba(79,195,247,0.55), 0 0 0 1px rgba(79,195,247,0.2);
+}
+.kpi-modal-close {
+  position: absolute; top: 16px; right: 16px;
+  width: auto; height: 36px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--rule); background: rgba(10,17,40,0.8);
+  color: var(--accent); font-family: var(--ui); font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+}
+.kpi-modal-close:hover, .kpi-modal-close:focus-visible { background: rgba(79,195,247,0.16); }
+.kpi-modal-kicker {
+  font-family: var(--ui); font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-ghost);
+  padding-right: 88px;
+}
+.kpi-modal-value {
+  margin-top: 10px; font-family: var(--ui); font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 800; color: #eaf7ff; letter-spacing: -0.04em; line-height: 1;
+}
+.kpi-modal-meta { margin: 10px 0 18px; font-size: 0.9rem; color: #5ee0a0; font-weight: 700; }
+.kpi-modal-meta span { font-weight: 500; color: var(--ink-ghost); }
+.kpi-modal-chart { width: 100%; height: 180px; display: block; }
+.kpi-modal-chart .area { fill: url(#activityFill); }
+.kpi-modal-card.is-wide { width: min(1080px, calc(100vw - 32px)); }
+.kpi-modal-clone .panel { background: none; border: 0; box-shadow: none; padding: 0; cursor: default; transform: none; }
+.kpi-modal-clone .kpi-open { display: none; }
+.kpi-modal-clone .activity-chart, .kpi-modal-clone .compare-chart { height: 260px; }
+.kpi-modal-clone .track-table { min-width: 860px; }
+.kpi-modal-clone .panel-title, .kpi-modal-clone .panel-head { padding-right: 0; }
+body.kpi-modal-open { overflow: hidden; }
+body.kpi-modal-open .dash,
+body.kpi-modal-open .glass-bar,
+body.kpi-modal-open .dock {
+  filter: blur(11px) saturate(0.65) brightness(0.55);
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .kpi-open { opacity: 1; transform: none; }
+}
+
 @media (max-width: 1200px) { .kpi-row { grid-template-columns: repeat(3, minmax(0,1fr)); } }
 @media (max-width: 900px) {
   .dash-lower { grid-template-columns: 1fr; }
@@ -257,7 +332,7 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
 @media (max-width: 560px) { .kpi-row { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
   .dash-chip-dot { animation: none; }
-  .kpi-card:hover, .kpi-card.is-active { transform: none; }
+  .kpi-card:hover, .kpi-card.is-active, .stat-panel:hover { transform: none; }
   .chart-panel.is-updating .activity-chart { animation: none; }
   .dock, .dock a, .dock-scrim, body.dock-dim .dash { transition: none; }
   .dock.is-arc a:nth-child(n) { transform: none; }
@@ -315,7 +390,7 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
     <div>
       <div class="dash-kicker">Camera session</div>
       <h1 class="dash-title">Tracking readout</h1>
-      <p class="dash-sub">Counts, motion, and IDs from the tracking model. Click a card to inspect it.</p>
+      <p class="dash-sub">Hover any stat, chart, or the table to expand it. Close to return.</p>
     </div>
   </div>
 
@@ -332,6 +407,7 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
         </div>
         <svg class="spark" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 32 L18 30 L38 24 L58 18 L78 14 L88 8 L88 42 L0 42 Z"/><path class="line" d="M0 32 L18 30 L38 24 L58 18 L78 14 L88 8"/></svg>
       </div>
+      <span class="kpi-open">Expand</span>
     </button>
 
     <button type="button" class="kpi-card is-active" data-metric="movement" aria-pressed="true">
@@ -346,6 +422,7 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
         </div>
         <svg class="spark violet" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 26 L20 28 L42 18 L64 16 L88 12 L88 42 L0 42 Z"/><path class="line" d="M0 26 L20 28 L42 18 L64 16 L88 12"/></svg>
       </div>
+      <span class="kpi-open">Expand</span>
     </button>
 
     <button type="button" class="kpi-card" data-metric="peak" aria-pressed="false">
@@ -360,6 +437,7 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
         </div>
         <svg class="spark" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 30 L22 26 L44 20 L66 10 L88 8 L88 42 L0 42 Z"/><path class="line" d="M0 30 L22 26 L44 20 L66 10 L88 8"/></svg>
       </div>
+      <span class="kpi-open">Expand</span>
     </button>
 
     <button type="button" class="kpi-card" data-metric="confidence" aria-pressed="false">
@@ -374,6 +452,7 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
         </div>
         <svg class="spark" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 20 L24 19 L48 17 L72 14 L88 10 L88 42 L0 42 Z"/><path class="line" d="M0 20 L24 19 L48 17 L72 14 L88 10"/></svg>
       </div>
+      <span class="kpi-open">Expand</span>
     </button>
 
     <button type="button" class="kpi-card" data-metric="tracks" aria-pressed="false">
@@ -388,12 +467,14 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
         </div>
         <svg class="spark violet" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 28 L20 26 L44 22 L66 16 L88 14 L88 42 L0 42 Z"/><path class="line" d="M0 28 L20 26 L44 22 L66 16 L88 14"/></svg>
       </div>
+      <span class="kpi-open">Expand</span>
     </button>
   </div>
 
   <div class="activity-stack" id="activity">
   <div class="dash-lower">
-    <div class="panel chart-panel" id="chartPanel">
+    <div class="panel chart-panel stat-panel" id="chartPanel">
+      <span class="kpi-open">Expand</span>
       <div class="panel-title" id="chartTitle">Movement overview</div>
       <div class="chart-value" id="chartValue">4.6 cm/s</div>
       <p class="chart-meta" id="chartMeta">↑ 12.4% <span>avg speed, last 30 min</span></p>
@@ -403,7 +484,8 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
       </svg>
       <div class="chart-axis" id="chartAxis"><span>12:00</span><span>12:10</span><span>12:20</span><span>12:30</span></div>
     </div>
-    <div class="panel">
+    <div class="panel stat-panel" id="detailPanel">
+      <span class="kpi-open">Expand</span>
       <div class="panel-title" id="detailTitle">Most active in view</div>
       <div id="detailList">
         <div class="mover"><span class="mover-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z"/></svg></span><div><div class="mover-name">Fish 03</div><div class="mover-sub">Mid-water</div></div><div class="mover-val"><strong>7.2 cm/s</strong><span>↑ 28.6%</span></div></div>
@@ -415,7 +497,8 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
   </div>
 
   <div class="dash-lower">
-    <div class="panel" id="comparePanel">
+    <div class="panel stat-panel" id="comparePanel">
+      <span class="kpi-open">Expand</span>
       <div class="panel-head">
         <div class="panel-title">Movement vs activity</div>
         <div class="compare-legend">
@@ -434,14 +517,16 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
       </svg>
       <div class="chart-axis" id="cmpAxis"><span>12:00</span><span>12:10</span><span>12:20</span><span>12:30</span></div>
     </div>
-    <div class="panel">
+    <div class="panel stat-panel" id="fishPanel">
+      <span class="kpi-open">Expand</span>
       <div class="panel-title">Per-fish comparison</div>
       <div id="fishCompare"></div>
     </div>
   </div>
   </div>
 
-  <div class="panel" id="log">
+  <div class="panel stat-panel" id="log">
+    <span class="kpi-open">Expand</span>
     <div class="panel-title">Tracked fish</div>
     <div class="table-wrap">
       <table class="track-table">
@@ -460,6 +545,25 @@ body.dock-dim .dash { filter: saturate(0.7) brightness(0.55); }
         <tbody id="trackBody"></tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<div class="kpi-modal" id="kpiModal" hidden>
+  <div class="kpi-modal-scrim" id="kpiModalScrim"></div>
+  <div class="kpi-modal-card" role="dialog" aria-modal="true" aria-labelledby="kpiModalTitle">
+    <button type="button" class="kpi-modal-close" id="kpiModalClose">Close</button>
+    <div id="kpiModalMetric">
+      <div class="kpi-modal-kicker" id="kpiModalTitle">Metric</div>
+      <div class="kpi-modal-value" id="kpiModalValue">—</div>
+      <p class="kpi-modal-meta" id="kpiModalMeta"></p>
+      <svg class="kpi-modal-chart" viewBox="0 0 640 180" preserveAspectRatio="none" aria-hidden="true">
+        <path class="area" id="kpiModalArea" d=""/>
+        <path class="line" id="kpiModalLine" d=""/>
+      </svg>
+      <div class="chart-axis" id="kpiModalAxis"></div>
+      <div id="kpiModalDetails"></div>
+    </div>
+    <div class="kpi-modal-clone" id="kpiModalClone" hidden></div>
   </div>
 </div>
 
@@ -704,7 +808,88 @@ function applyDashboard(data) {
 
 document.querySelectorAll('.kpi-card').forEach(function (card) {
   card.addEventListener('click', function () {
-    selectMetric(card.getAttribute('data-metric'), true);
+    const id = card.getAttribute('data-metric');
+    selectMetric(id, true);
+    openKpiModal(id);
+  });
+});
+
+const kpiModal = document.getElementById('kpiModal');
+const kpiModalClose = document.getElementById('kpiModalClose');
+const kpiModalMetric = document.getElementById('kpiModalMetric');
+const kpiModalClone = document.getElementById('kpiModalClone');
+const kpiModalCard = kpiModal.querySelector('.kpi-modal-card');
+let kpiModalLastFocus = null;
+
+function showStatOverlay() {
+  kpiModalLastFocus = document.activeElement;
+  kpiModal.hidden = false;
+  document.body.classList.add('kpi-modal-open');
+  kpiModalClose.focus();
+}
+
+function openKpiModal(id) {
+  kpiModalMetric.hidden = false;
+  kpiModalClone.hidden = true;
+  kpiModalClone.innerHTML = '';
+  kpiModalCard.classList.remove('is-wide');
+  const metric = dashboard && dashboard.metrics ? dashboard.metrics[id] : null;
+  const card = document.querySelector('.kpi-card[data-metric="' + id + '"]');
+  document.getElementById('kpiModalTitle').textContent = metric ? metric.title : (card ? card.querySelector('.kpi-label').textContent : 'Metric');
+  document.getElementById('kpiModalValue').innerHTML = metric ? escapeHtml(metric.value) : (card ? card.querySelector('.kpi-value').innerHTML : '—');
+  if (metric) {
+    document.getElementById('kpiModalMeta').innerHTML = escapeHtml(trendMark(metric.trend_dir, metric.trend_pct)) + ' <span>' + escapeHtml(metric.meta) + '</span>';
+    const paths = seriesToPaths(metric.series);
+    document.getElementById('kpiModalLine').setAttribute('d', paths.line);
+    document.getElementById('kpiModalArea').setAttribute('d', paths.area);
+    fillAxis(document.getElementById('kpiModalAxis'), metric.axis);
+    document.getElementById('kpiModalDetails').innerHTML = renderDetails(metric.details);
+  }
+  showStatOverlay();
+}
+
+function openPanelModal(panel) {
+  const clone = panel.cloneNode(true);
+  clone.querySelectorAll('.kpi-open').forEach(function (chip) { chip.remove(); });
+  clone.querySelectorAll('[id]').forEach(function (el) { el.removeAttribute('id'); });
+  clone.removeAttribute('id');
+  kpiModalMetric.hidden = true;
+  kpiModalClone.hidden = false;
+  kpiModalClone.innerHTML = '';
+  kpiModalClone.appendChild(clone);
+  kpiModalCard.classList.toggle('is-wide', panel.id === 'log' || panel.id === 'comparePanel');
+  showStatOverlay();
+}
+
+function closeKpiModal() {
+  kpiModal.hidden = true;
+  document.body.classList.remove('kpi-modal-open');
+  kpiModalClone.innerHTML = '';
+  kpiModalClone.hidden = true;
+  kpiModalMetric.hidden = false;
+  kpiModalCard.classList.remove('is-wide');
+  if (kpiModalLastFocus && kpiModalLastFocus.focus) kpiModalLastFocus.focus();
+}
+
+kpiModalClose.addEventListener('click', closeKpiModal);
+document.getElementById('kpiModalScrim').addEventListener('click', closeKpiModal);
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && document.body.classList.contains('kpi-modal-open')) {
+    e.preventDefault();
+    closeKpiModal();
+  }
+});
+
+document.querySelectorAll('.stat-panel').forEach(function (panel) {
+  panel.setAttribute('tabindex', '0');
+  panel.addEventListener('click', function () {
+    openPanelModal(panel);
+  });
+  panel.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openPanelModal(panel);
+    }
   });
 });
 
