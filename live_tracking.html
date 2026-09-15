@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Tank — Tracking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Archivo:wght@400;500;600;700;900&family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy: #0A1128;
+  --accent: #4FC3F7;
+  --accent-hover: #81D4FA;
+  --muted: #8BA3C7;
+  --rule: rgba(79, 195, 247, 0.22);
+  --ink-ghost: #6B86A8;
+  --display: "Bebas Neue", "Oswald", sans-serif;
+  --sans: "Open Sans", system-ui, -apple-system, sans-serif;
+  --ui: "Archivo", "Open Sans", system-ui, sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --violet: #8B7CFF;
+  --card: linear-gradient(180deg, rgba(22, 38, 78, 0.92), rgba(12, 22, 48, 0.96));
+  --glow: 0 18px 40px -18px rgba(79, 195, 247, 0.45);
+  --glass: rgba(10, 17, 40, 0.52);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  background:
+    radial-gradient(1100px 520px at 8% -8%, rgba(79, 195, 247, 0.16), transparent 55%),
+    radial-gradient(900px 480px at 92% 12%, rgba(139, 124, 255, 0.14), transparent 50%),
+    var(--navy);
+  color: var(--muted);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  padding: 84px 20px 28px 108px;
+}
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+.glass-bar {
+  position: fixed; top: 14px; left: 108px; right: 16px; z-index: 60;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 56px; padding: 0 18px; border-radius: 18px;
+  background: var(--glass); border: 1px solid var(--rule);
+  box-shadow: 0 12px 40px -18px rgba(0,0,0,0.65);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.brand { display: inline-flex; align-items: baseline; gap: 10px; text-decoration: none; color: var(--accent); }
+.brand-mark { font-family: var(--display); font-size: 1.55rem; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1; }
+.brand-sub { font-family: var(--ui); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.dash-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--rule); background: rgba(15,26,54,0.55); font-family: var(--ui); font-size: 0.72rem; color: var(--muted); }
+.dash-chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(79,195,247,0.22); animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(79,195,247,0.08); opacity: 0.85; } }
+
+.dock {
+  position: fixed; top: 50%; left: 16px; transform: translateY(-50%); z-index: 61;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 8px; border-radius: 24px;
+  background: var(--glass); border: 1px solid var(--rule);
+  box-shadow: 0 12px 40px -18px rgba(0,0,0,0.65);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.dock a {
+  position: relative; width: 44px; height: 44px; border-radius: 14px;
+  display: grid; place-items: center; color: var(--muted); text-decoration: none;
+  transition: background 180ms var(--ease-out), color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
+}
+.dock a svg { width: 20px; height: 20px; }
+.dock a:hover, .dock a:focus-visible { color: var(--accent); background: rgba(79,195,247,0.12); }
+.dock a.is-active { color: var(--navy); background: var(--accent); box-shadow: 0 8px 20px -8px rgba(79,195,247,0.9); }
+.dock a::after {
+  content: attr(data-label); position: absolute; left: calc(100% + 12px); top: 50%;
+  transform: translateY(-50%); white-space: nowrap; padding: 6px 10px; border-radius: 8px;
+  background: rgba(10,17,40,0.92); border: 1px solid var(--rule); color: var(--accent);
+  font-family: var(--ui); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; opacity: 0; pointer-events: none; transition: opacity 160ms var(--ease-out);
+}
+.dock a:hover::after, .dock a:focus-visible::after { opacity: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+#stats, #activity, #log { scroll-margin-top: 88px; }
+.activity-stack { display: flex; flex-direction: column; gap: 16px; }
+
+@media (max-width: 760px) {
+  body { padding: 76px 12px 92px; }
+  .glass-bar { left: 12px; right: 12px; top: 10px; }
+  .dock {
+    top: auto; bottom: 12px; left: 50%; transform: translateX(-50%);
+    flex-direction: row; justify-content: space-around;
+    width: calc(100% - 24px); max-width: 420px; padding: 8px 10px;
+  }
+  .dock a::after { display: none; }
+  .dock a { width: 72px; height: auto; padding: 6px 4px 5px; gap: 3px; }
+  .dock .sr-only {
+    position: static; width: auto; height: auto; margin: 0; clip: auto; overflow: visible;
+    font-family: var(--ui); font-size: 0.55rem; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; white-space: nowrap;
+  }
+}
+
+.dash { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.dash-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.dash-kicker { font-family: var(--ui); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-ghost); margin-bottom: 6px; }
+.dash-title { font-family: var(--display); font-size: clamp(1.7rem,3vw,2.4rem); letter-spacing: 0.02em; text-transform: uppercase; color: var(--accent); line-height: 0.95; }
+.dash-sub { margin-top: 6px; font-size: 0.88rem; color: var(--muted); }
+
+.panel { background: var(--card); border: 1px solid var(--rule); padding: 20px; border-radius: 22px; box-shadow: var(--glow); }
+.panel-title { font-family: var(--ui); font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-ghost); margin-bottom: 14px; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.kpi-card {
+  position: relative; overflow: hidden; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 22px; padding: 16px 16px 12px;
+  box-shadow: var(--glow); min-height: 138px;
+  transition: transform 200ms var(--ease-out), border-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+}
+.kpi-card:hover { transform: translateY(-3px); border-color: rgba(79,195,247,0.45); }
+.kpi-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.kpi-card.is-active {
+  border-color: rgba(79,195,247,0.8);
+  box-shadow: 0 18px 44px -14px rgba(79,195,247,0.75), 0 0 0 1px rgba(79,195,247,0.4);
+  transform: translateY(-3px);
+}
+.kpi-card.is-active .kpi-label { color: var(--accent); }
+.kpi-card::after { content: ""; position: absolute; right: -30px; top: -40px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, rgba(79,195,247,0.16), transparent 70%); pointer-events: none; }
+.kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.kpi-label { font-family: var(--ui); font-size: 0.74rem; font-weight: 600; color: var(--muted); }
+.kpi-icon { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: linear-gradient(180deg, rgba(79,195,247,0.28), rgba(139,124,255,0.18)); color: var(--accent); }
+.kpi-icon svg { width: 16px; height: 16px; }
+.kpi-body { display: grid; grid-template-columns: 1fr 76px; gap: 6px; align-items: end; }
+.kpi-value { font-family: var(--ui); font-size: clamp(1.35rem, 2vw, 1.7rem); font-weight: 800; color: #eaf7ff; letter-spacing: -0.03em; line-height: 1; }
+.kpi-unit { font-size: 0.5em; font-weight: 700; color: var(--muted); }
+.kpi-trend { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; font-family: var(--ui); font-size: 0.68rem; font-weight: 700; color: #5ee0a0; }
+.kpi-trend.down { color: #ff8aa0; }
+.kpi-trend span { font-weight: 500; color: var(--ink-ghost); }
+.spark { width: 76px; height: 38px; display: block; }
+.spark path.line { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; }
+.spark path.area { fill: url(#sparkFill); }
+.spark.violet path.line { stroke: var(--violet); }
+
+.dash-lower { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(240px,0.8fr); gap: 14px; }
+.chart-panel.is-updating .activity-chart { animation: chartIn 420ms var(--ease-out); }
+@keyframes chartIn { from { opacity: 0.35; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.chart-value { font-family: var(--ui); font-size: 1.6rem; font-weight: 800; color: #eaf7ff; letter-spacing: -0.03em; }
+.chart-meta { margin: 6px 0 12px; font-size: 0.76rem; color: #5ee0a0; font-weight: 700; }
+.chart-meta span { font-weight: 500; color: var(--ink-ghost); }
+.activity-chart { width: 100%; height: 170px; display: block; }
+.activity-chart .area { fill: url(#activityFill); }
+.activity-chart .line { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+.chart-axis { display: flex; justify-content: space-between; margin-top: 8px; font-size: 0.68rem; color: var(--ink-ghost); }
+.mover { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.mover:last-child { border-bottom: 0; padding-bottom: 0; }
+.mover-ico { width: 34px; height: 34px; border-radius: 10px; background: rgba(79,195,247,0.12); display: grid; place-items: center; color: var(--accent); flex: none; }
+.mover-ico svg { width: 16px; height: 16px; }
+.mover-name { font-family: var(--ui); font-size: 0.82rem; font-weight: 700; color: #eaf7ff; }
+.mover-sub { font-size: 0.68rem; color: var(--ink-ghost); }
+.mover-val { margin-left: auto; text-align: right; }
+.mover-val strong { display: block; font-size: 0.82rem; color: #eaf7ff; }
+.mover-val span { font-size: 0.68rem; color: #5ee0a0; font-weight: 700; }
+
+.table-wrap { overflow-x: auto; }
+.track-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+.track-table th {
+  text-align: left; font-family: var(--ui); font-size: 0.58rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-ghost);
+  padding: 8px 10px 12px; border-bottom: 1px solid var(--rule);
+}
+.track-table td {
+  padding: 12px 10px; border-bottom: 1px solid rgba(79,195,247,0.1);
+  font-size: 0.82rem; color: #d7ecf8; font-family: var(--ui);
+}
+.track-table tr:hover td { background: rgba(79,195,247,0.06); }
+.track-table .id { font-weight: 800; color: var(--accent); }
+.pill { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.pill.swim { background: rgba(79,195,247,0.16); color: var(--accent); }
+.pill.idle { background: rgba(139,124,255,0.16); color: #c4bbff; }
+.pill.surface { background: rgba(94,224,160,0.14); color: #5ee0a0; }
+.trend-up { color: #5ee0a0; font-weight: 700; font-size: 0.72rem; }
+.trend-down { color: #ff8aa0; font-weight: 700; font-size: 0.72rem; }
+
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.panel-head .panel-title { margin-bottom: 0; }
+.compare-legend { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--ui); font-size: 0.68rem; font-weight: 600; color: var(--muted); }
+.compare-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
+.swatch.move { background: var(--accent); box-shadow: 0 0 0 3px rgba(79,195,247,0.2); }
+.swatch.act { background: var(--violet); box-shadow: 0 0 0 3px rgba(139,124,255,0.22); }
+.compare-chart { width: 100%; height: 190px; display: block; }
+.compare-chart .area-move { fill: url(#compareFill); }
+.compare-chart .line-move { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; }
+.compare-chart .line-act { fill: none; stroke: var(--violet); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 5 4; }
+.compare-meta { display: flex; gap: 18px; margin: 4px 0 10px; flex-wrap: wrap; }
+.compare-meta b { color: #eaf7ff; font-size: 0.92rem; }
+.compare-meta span { color: var(--ink-ghost); font-size: 0.72rem; font-weight: 500; margin-left: 6px; }
+.fish-cmp { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.fish-cmp:last-child { border-bottom: 0; }
+.fish-cmp-id { font-family: var(--ui); font-size: 0.78rem; font-weight: 800; color: var(--accent); }
+.fish-cmp-zone { display: block; font-size: 0.62rem; font-weight: 500; color: var(--ink-ghost); }
+.bar-row { display: grid; grid-template-columns: 42px 1fr 52px; gap: 8px; align-items: center; margin-top: 4px; }
+.bar-row:first-child { margin-top: 0; }
+.bar-row em { font-style: normal; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-ghost); }
+.bar-track { height: 8px; border-radius: 999px; background: rgba(79,195,247,0.1); overflow: hidden; }
+.bar-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); width: 0; }
+.bar-row.act .bar-track i { background: var(--violet); }
+.bar-row b { font-size: 0.72rem; color: #eaf7ff; text-align: right; font-weight: 700; }
+.kpi-card.is-loading .kpi-value, .kpi-card.is-loading .kpi-trend { opacity: 0.45; }
+
+@media (max-width: 1200px) { .kpi-row { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 900px) {
+  .dash-lower { grid-template-columns: 1fr; }
+  .kpi-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 560px) { .kpi-row { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) {
+  .dash-chip-dot { animation: none; }
+  .kpi-card:hover, .kpi-card.is-active { transform: none; }
+  .chart-panel.is-updating .activity-chart { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="glass-bar">
+  <a class="brand" href="#stats">
+    <span class="brand-mark">Live Tank</span>
+    <span class="brand-sub">Tracking</span>
+  </a>
+  <div class="dash-chip" id="updatedChip"><span class="dash-chip-dot" aria-hidden="true"></span>Last updated Sep 15, 2026 · 12:00</div>
+</header>
+
+<nav class="dock" aria-label="Sections">
+  <a href="#stats" data-section="stats" data-label="Stats" class="is-active" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 18V10M10 18V6M16 18v-7M22 18V8"/></svg>
+    <span class="sr-only">Stats</span>
+  </a>
+  <a href="#activity" data-section="activity" data-label="Activity">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 16l5-6 4 3 8-9"/><path d="M15 4h5v5"/></svg>
+    <span class="sr-only">Activity</span>
+  </a>
+  <a href="#log" data-section="log" data-label="Fish log">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.2" fill="currentColor"/><circle cx="4" cy="12" r="1.2" fill="currentColor"/><circle cx="4" cy="18" r="1.2" fill="currentColor"/></svg>
+    <span class="sr-only">Fish log</span>
+  </a>
+</nav>
+
+<svg width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4FC3F7" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#4FC3F7" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="activityFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4FC3F7" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#8B7CFF" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="compareFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4FC3F7" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#4FC3F7" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="dash">
+  <div class="dash-head" id="stats">
+    <div>
+      <div class="dash-kicker">Camera session</div>
+      <h1 class="dash-title">Tracking readout</h1>
+      <p class="dash-sub">Counts, motion, and IDs from the tracking model. Click a card to inspect it.</p>
+    </div>
+  </div>
+
+  <div class="kpi-row" role="toolbar" aria-label="Tank metrics">
+    <button type="button" class="kpi-card" data-metric="view" aria-pressed="false">
+      <div class="kpi-top">
+        <div class="kpi-label">Fish in view</div>
+        <span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.2"/></svg></span>
+      </div>
+      <div class="kpi-body">
+        <div>
+          <div class="kpi-value">12</div>
+          <div class="kpi-trend">↑ 18.2% <span>vs 30 min</span></div>
+        </div>
+        <svg class="spark" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 32 L18 30 L38 24 L58 18 L78 14 L88 8 L88 42 L0 42 Z"/><path class="line" d="M0 32 L18 30 L38 24 L58 18 L78 14 L88 8"/></svg>
+      </div>
+    </button>
+
+    <button type="button" class="kpi-card is-active" data-metric="movement" aria-pressed="true">
+      <div class="kpi-top">
+        <div class="kpi-label">Avg movement</div>
+        <span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16c4-8 12-8 16 0"/><path d="M8 12c2-3 6-3 8 0"/></svg></span>
+      </div>
+      <div class="kpi-body">
+        <div>
+          <div class="kpi-value">4.6 <span class="kpi-unit">cm/s</span></div>
+          <div class="kpi-trend">↑ 12.4% <span>vs 30 min</span></div>
+        </div>
+        <svg class="spark violet" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 26 L20 28 L42 18 L64 16 L88 12 L88 42 L0 42 Z"/><path class="line" d="M0 26 L20 28 L42 18 L64 16 L88 12"/></svg>
+      </div>
+    </button>
+
+    <button type="button" class="kpi-card" data-metric="peak" aria-pressed="false">
+      <div class="kpi-top">
+        <div class="kpi-label">Peak speed</div>
+        <span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 3l-2 8h6l-6 10 2-8H7l6-10z"/></svg></span>
+      </div>
+      <div class="kpi-body">
+        <div>
+          <div class="kpi-value">7.2 <span class="kpi-unit">cm/s</span></div>
+          <div class="kpi-trend">↑ 28.6% <span>vs 30 min</span></div>
+        </div>
+        <svg class="spark" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 30 L22 26 L44 20 L66 10 L88 8 L88 42 L0 42 Z"/><path class="line" d="M0 30 L22 26 L44 20 L66 10 L88 8"/></svg>
+      </div>
+    </button>
+
+    <button type="button" class="kpi-card" data-metric="confidence" aria-pressed="false">
+      <div class="kpi-top">
+        <div class="kpi-label">Detection confidence</div>
+        <span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg></span>
+      </div>
+      <div class="kpi-body">
+        <div>
+          <div class="kpi-value">94%</div>
+          <div class="kpi-trend">↑ 2.1% <span>vs 30 min</span></div>
+        </div>
+        <svg class="spark" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 20 L24 19 L48 17 L72 14 L88 10 L88 42 L0 42 Z"/><path class="line" d="M0 20 L24 19 L48 17 L72 14 L88 10"/></svg>
+      </div>
+    </button>
+
+    <button type="button" class="kpi-card" data-metric="tracks" aria-pressed="false">
+      <div class="kpi-top">
+        <div class="kpi-label">Unique tracks</div>
+        <span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="15" r="3"/><path d="M11 9.5c1.5 1 3 3 4 5.5"/></svg></span>
+      </div>
+      <div class="kpi-body">
+        <div>
+          <div class="kpi-value">11</div>
+          <div class="kpi-trend">↑ 10.0% <span>vs 30 min</span></div>
+        </div>
+        <svg class="spark violet" viewBox="0 0 88 42" aria-hidden="true"><path class="area" d="M0 28 L20 26 L44 22 L66 16 L88 14 L88 42 L0 42 Z"/><path class="line" d="M0 28 L20 26 L44 22 L66 16 L88 14"/></svg>
+      </div>
+    </button>
+  </div>
+
+  <div class="activity-stack" id="activity">
+  <div class="dash-lower">
+    <div class="panel chart-panel" id="chartPanel">
+      <div class="panel-title" id="chartTitle">Movement overview</div>
+      <div class="chart-value" id="chartValue">4.6 cm/s</div>
+      <p class="chart-meta" id="chartMeta">↑ 12.4% <span>avg speed, last 30 min</span></p>
+      <svg class="activity-chart" viewBox="0 0 640 180" preserveAspectRatio="none" aria-hidden="true">
+        <path class="area" id="chartArea" d="M0 140 L80 128 L160 122 L240 104 L320 90 L400 78 L480 64 L560 54 L640 36 L640 180 L0 180 Z"/>
+        <path class="line" id="chartLine" d="M0 140 L80 128 L160 122 L240 104 L320 90 L400 78 L480 64 L560 54 L640 36"/>
+      </svg>
+      <div class="chart-axis" id="chartAxis"><span>12:00</span><span>12:10</span><span>12:20</span><span>12:30</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title" id="detailTitle">Most active in view</div>
+      <div id="detailList">
+        <div class="mover"><span class="mover-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z"/></svg></span><div><div class="mover-name">Fish 03</div><div class="mover-sub">Mid-water</div></div><div class="mover-val"><strong>7.2 cm/s</strong><span>↑ 28.6%</span></div></div>
+        <div class="mover"><span class="mover-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z"/></svg></span><div><div class="mover-name">Fish 07</div><div class="mover-sub">Surface</div></div><div class="mover-val"><strong>6.1 cm/s</strong><span>↑ 21.4%</span></div></div>
+        <div class="mover"><span class="mover-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z"/></svg></span><div><div class="mover-name">Fish 01</div><div class="mover-sub">Near glass</div></div><div class="mover-val"><strong>5.4 cm/s</strong><span>↑ 18.7%</span></div></div>
+        <div class="mover"><span class="mover-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z"/></svg></span><div><div class="mover-name">Fish 11</div><div class="mover-sub">Bottom</div></div><div class="mover-val"><strong>3.8 cm/s</strong><span>↑ 9.2%</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash-lower">
+    <div class="panel" id="comparePanel">
+      <div class="panel-head">
+        <div class="panel-title">Movement vs activity</div>
+        <div class="compare-legend">
+          <span><i class="swatch move" aria-hidden="true"></i> Avg movement</span>
+          <span><i class="swatch act" aria-hidden="true"></i> Activity index</span>
+        </div>
+      </div>
+      <div class="compare-meta">
+        <div id="cmpMoveNow"><b>4.6 cm/s</b><span>avg movement</span></div>
+        <div id="cmpActNow"><b>88%</b><span>activity index</span></div>
+      </div>
+      <svg class="compare-chart" viewBox="0 0 640 180" preserveAspectRatio="none" aria-hidden="true">
+        <path class="area-move" id="cmpMoveArea" d=""/>
+        <path class="line-move" id="cmpMoveLine" d=""/>
+        <path class="line-act" id="cmpActLine" d=""/>
+      </svg>
+      <div class="chart-axis" id="cmpAxis"><span>12:00</span><span>12:10</span><span>12:20</span><span>12:30</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Per-fish comparison</div>
+      <div id="fishCompare"></div>
+    </div>
+  </div>
+  </div>
+
+  <div class="panel" id="log">
+    <div class="panel-title">Tracked fish</div>
+    <div class="table-wrap">
+      <table class="track-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Zone</th>
+            <th>Speed</th>
+            <th>Heading</th>
+            <th>Confidence</th>
+            <th>Dwell</th>
+            <th>Status</th>
+            <th>Last seen</th>
+          </tr>
+        </thead>
+        <tbody id="trackBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = {
+  dashboard: '/api/dashboard',
+  stats: '/api/stats',
+  metrics: '/api/metrics',
+  metric: function (id) { return '/api/metrics/' + encodeURIComponent(id); },
+  tracks: '/api/tracks',
+  activity: '/api/activity'
+};
+
+const FISH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s4-7 9-7 9 7 9 7-4 7-9 7-9-7-9-7z"/></svg>';
+const STATUS_PILL = { swimming: 'swim', idle: 'idle', surface: 'surface' };
+const STATUS_LABEL = { swimming: 'Swimming', idle: 'Idle', surface: 'Surface' };
+
+let dashboard = null;
+let selectedMetric = 'movement';
+
+const dockLinks = Array.prototype.slice.call(document.querySelectorAll('.dock a[data-section]'));
+const sections = dockLinks.map(function (link) {
+  return document.getElementById(link.getAttribute('data-section'));
+}).filter(Boolean);
+
+function setDockActive(id) {
+  dockLinks.forEach(function (link) {
+    const on = link.getAttribute('data-section') === id;
+    link.classList.toggle('is-active', on);
+    if (on) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
+}
+
+if ('IntersectionObserver' in window && sections.length) {
+  const spy = new IntersectionObserver(function (entries) {
+    const visible = entries
+      .filter(function (e) { return e.isIntersecting; })
+      .sort(function (a, b) { return b.intersectionRatio - a.intersectionRatio; })[0];
+    if (visible && visible.target.id) setDockActive(visible.target.id);
+  }, { rootMargin: '-18% 0px -60% 0px', threshold: [0.12, 0.3, 0.55] });
+  sections.forEach(function (section) { spy.observe(section); });
+}
+
+dockLinks.forEach(function (link) {
+  link.addEventListener('click', function () {
+    setDockActive(link.getAttribute('data-section'));
+  });
+});
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatNum(value, digits) {
+  const n = Number(value);
+  return isFinite(n) ? n.toFixed(digits) : String(value == null ? '' : value);
+}
+
+function trendMark(dir, pct) {
+  const arrow = dir === 'down' ? '↓' : '↑';
+  const n = Number(pct);
+  const shown = isFinite(n) ? n.toFixed(1) : pct;
+  return arrow + ' ' + shown + '%';
+}
+
+function seriesToPaths(values, w, h, top, bottom) {
+  w = w || 640; h = h || 180; top = top == null ? 16 : top; bottom = bottom == null ? 168 : bottom;
+  if (!values || !values.length) return { line: '', area: '' };
+  const min = Math.min.apply(null, values);
+  const max = Math.max.apply(null, values);
+  const span = max - min || 1;
+  const last = values.length - 1 || 1;
+  const pts = values.map(function (v, i) {
+    const x = (i / last) * w;
+    const y = bottom - ((v - min) / span) * (bottom - top);
+    return [x, y];
+  });
+  const line = pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0] + ' ' + p[1]; }).join(' ');
+  return { line: line, area: line + ' L' + w + ' ' + h + ' L0 ' + h + ' Z' };
+}
+
+function fillAxis(el, labels) {
+  if (!el || !labels || !labels.length) return;
+  el.innerHTML = labels.map(function (label) {
+    return '<span>' + escapeHtml(label) + '</span>';
+  }).join('');
+}
+
+function renderDetails(items) {
+  return (items || []).map(function (item) {
+    return '<div class="mover"><span class="mover-ico" aria-hidden="true">' + FISH_ICON + '</span><div><div class="mover-name">' +
+      escapeHtml(item.name) + '</div><div class="mover-sub">' + escapeHtml(item.sub) +
+      '</div></div><div class="mover-val"><strong>' + escapeHtml(item.value) + '</strong><span>' +
+      escapeHtml(item.trend) + '</span></div></div>';
+  }).join('');
+}
+
+function renderCards(cards) {
+  (cards || []).forEach(function (card) {
+    const el = document.querySelector('.kpi-card[data-metric="' + card.id + '"]');
+    if (!el) return;
+    const gap = card.unit === '%' ? '' : ' ';
+    const unit = card.unit ? gap + '<span class="kpi-unit">' + escapeHtml(card.unit) + '</span>' : '';
+    el.querySelector('.kpi-value').innerHTML = escapeHtml(card.display) + unit;
+    const trend = el.querySelector('.kpi-trend');
+    trend.classList.toggle('down', card.trend_dir === 'down');
+    trend.innerHTML = escapeHtml(trendMark(card.trend_dir, card.trend_pct)) + ' <span>vs 30 min</span>';
+    const spark = seriesToPaths(card.spark, 88, 42, 6, 32);
+    const area = el.querySelector('.spark .area');
+    const line = el.querySelector('.spark .line');
+    if (area) area.setAttribute('d', spark.area);
+    if (line) line.setAttribute('d', spark.line);
+    el.classList.remove('is-loading');
+  });
+}
+
+function selectMetric(id, animate) {
+  if (!dashboard || !dashboard.metrics || !dashboard.metrics[id]) return;
+  selectedMetric = id;
+  const metric = dashboard.metrics[id];
+  document.querySelectorAll('.kpi-card').forEach(function (card) {
+    const on = card.getAttribute('data-metric') === id;
+    card.classList.toggle('is-active', on);
+    card.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  document.getElementById('chartTitle').textContent = metric.title;
+  document.getElementById('chartValue').textContent = metric.value;
+  const mark = trendMark(metric.trend_dir, metric.trend_pct);
+  document.getElementById('chartMeta').innerHTML = escapeHtml(mark) + ' <span>' + escapeHtml(metric.meta) + '</span>';
+  const paths = seriesToPaths(metric.series);
+  document.getElementById('chartLine').setAttribute('d', paths.line);
+  document.getElementById('chartArea').setAttribute('d', paths.area);
+  fillAxis(document.getElementById('chartAxis'), metric.axis);
+  document.getElementById('detailTitle').textContent = metric.detail_title;
+  document.getElementById('detailList').innerHTML = renderDetails(metric.details);
+  const panel = document.getElementById('chartPanel');
+  if (animate && panel && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    panel.classList.remove('is-updating');
+    void panel.offsetWidth;
+    panel.classList.add('is-updating');
+  }
+}
+
+function renderTracks(rows) {
+  const body = document.getElementById('trackBody');
+  body.innerHTML = (rows || []).map(function (row) {
+    const pill = STATUS_PILL[row.status] || 'swim';
+    const label = STATUS_LABEL[row.status] || row.status;
+    const trendClass = row.trend_dir === 'down' ? 'trend-down' : 'trend-up';
+    const heading = String(row.heading).padStart(3, '0') + '°';
+    return '<tr><td class="id">' + escapeHtml(row.id) + '</td><td>' + escapeHtml(row.zone) +
+      '</td><td>' + escapeHtml(formatNum(row.speed, 1)) + ' ' + escapeHtml(row.speed_unit) +
+      ' <span class="' + trendClass + '">' + escapeHtml(trendMark(row.trend_dir, row.trend_pct)) +
+      '</span></td><td>' + escapeHtml(heading) + '</td><td>' + escapeHtml(row.confidence) +
+      '%</td><td>' + escapeHtml(formatNum(row.dwell_min, 1)) + ' min</td><td><span class="pill ' + pill + '">' +
+      escapeHtml(label) + '</span></td><td>' + escapeHtml(row.last_seen) + '</td></tr>';
+  }).join('');
+}
+
+function lastOf(values) {
+  return values && values.length ? values[values.length - 1] : '—';
+}
+
+function renderComparison(cmp) {
+  if (!cmp) return;
+  const moveVals = (cmp.movement && cmp.movement.values) || [];
+  const actVals = (cmp.activity && cmp.activity.values) || [];
+  const movePaths = seriesToPaths(moveVals);
+  const actPaths = seriesToPaths(actVals);
+  document.getElementById('cmpMoveArea').setAttribute('d', movePaths.area);
+  document.getElementById('cmpMoveLine').setAttribute('d', movePaths.line);
+  document.getElementById('cmpActLine').setAttribute('d', actPaths.line);
+  fillAxis(document.getElementById('cmpAxis'), cmp.axis);
+  const moveUnit = (cmp.movement && cmp.movement.unit) || 'cm/s';
+  const actUnit = (cmp.activity && cmp.activity.unit) || '%';
+  document.getElementById('cmpMoveNow').innerHTML = '<b>' + escapeHtml(lastOf(moveVals)) + ' ' +
+    escapeHtml(moveUnit) + '</b><span>' + escapeHtml((cmp.movement && cmp.movement.label) || 'Avg movement') + '</span>';
+  document.getElementById('cmpActNow').innerHTML = '<b>' + escapeHtml(lastOf(actVals)) +
+    escapeHtml(actUnit) + '</b><span>' + escapeHtml((cmp.activity && cmp.activity.label) || 'Activity index') + '</span>';
+
+  const fish = cmp.by_fish || [];
+  const maxMove = Math.max.apply(null, fish.map(function (f) { return Number(f.movement) || 0; }).concat([1]));
+  document.getElementById('fishCompare').innerHTML = fish.map(function (f) {
+    const movePct = Math.max(4, Math.round((Number(f.movement) / maxMove) * 100));
+    const actPct = Math.max(4, Math.round(Number(f.activity) || 0));
+    return '<div class="fish-cmp"><div><div class="fish-cmp-id">' + escapeHtml(f.id) +
+      '</div><span class="fish-cmp-zone">' + escapeHtml(f.zone) + '</span></div><div>' +
+      '<div class="bar-row"><em>Move</em><div class="bar-track"><i style="width:' + movePct +
+      '%"></i></div><b>' + escapeHtml(formatNum(f.movement, 1)) + '</b></div>' +
+      '<div class="bar-row act"><em>Act</em><div class="bar-track"><i style="width:' + actPct +
+      '%"></i></div><b>' + escapeHtml(f.activity) + '%</b></div></div></div>';
+  }).join('');
+}
+
+function applyDashboard(data) {
+  dashboard = data;
+  if (data.updated_label) {
+    document.getElementById('updatedChip').innerHTML =
+      '<span class="dash-chip-dot" aria-hidden="true"></span>Last updated ' + escapeHtml(data.updated_label);
+  }
+  renderCards(data.cards);
+  renderTracks(data.tracks);
+  renderComparison(data.comparison);
+  selectMetric(selectedMetric, false);
+}
+
+document.querySelectorAll('.kpi-card').forEach(function (card) {
+  card.addEventListener('click', function () {
+    selectMetric(card.getAttribute('data-metric'), true);
+  });
+});
+
+const kpiCards = Array.prototype.slice.call(document.querySelectorAll('.kpi-card'));
+document.querySelector('.kpi-row').addEventListener('keydown', function (e) {
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+  const i = kpiCards.indexOf(document.activeElement);
+  if (i < 0) return;
+  e.preventDefault();
+  const next = e.key === 'ArrowRight' ? kpiCards[(i + 1) % kpiCards.length] : kpiCards[(i - 1 + kpiCards.length) % kpiCards.length];
+  next.focus();
+  selectMetric(next.getAttribute('data-metric'), true);
+});
+
+fetch(API.dashboard)
+  .then(function (res) { if (!res.ok) throw new Error('dashboard ' + res.status); return res.json(); })
+  .then(applyDashboard)
+  .catch(function () {
+    document.getElementById('updatedChip').innerHTML =
+      '<span class="dash-chip-dot" aria-hidden="true"></span>Model feed unavailable';
+  });
+</script>
+</body>
+</html>
