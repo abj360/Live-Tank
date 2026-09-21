@@ -337,6 +337,19 @@ body.kpi-modal-open .dock {
   .dock, .dock a, .dock-scrim, body.dock-dim .dash { transition: none; }
   .dock.is-arc a:nth-child(n) { transform: none; }
 }
+
+/* live camera panel */
+.live-frame { position: relative; border-radius: 16px; overflow: hidden; background: #050B1C; border: 1px solid var(--rule); aspect-ratio: 16 / 9; }
+.live-video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.live-note { position: absolute; inset: 0; display: grid; place-content: center; gap: 6px; text-align: center; padding: 20px; font-family: var(--ui); font-size: 0.82rem; color: var(--ink-ghost); }
+.live-note b { color: var(--muted); font-size: 0.9rem; }
+.live-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-family: var(--ui); font-size: 0.74rem; color: var(--muted); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-ghost); }
+.live-dot.is-live { background: var(--accent); box-shadow: 0 0 0 4px rgba(79,195,247,0.22); animation: pulse 1.8s ease-in-out infinite; }
+.live-dot.is-warn { background: #FFB020; }
+.live-sep { color: var(--ink-ghost); }
+.live-open { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--rule); color: var(--accent); text-decoration: none; font-family: var(--ui); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.66rem; }
+.live-open:hover { border-color: var(--accent); color: var(--accent-hover); }
 </style>
 </head>
 <body>
@@ -354,6 +367,10 @@ body.kpi-modal-open .dock {
   <svg class="dock-curve" viewBox="0 0 88 260" aria-hidden="true" focusable="false">
     <path d="M22 16 C 78 72, 78 188, 22 244"/>
   </svg>
+  <a href="#live" data-section="live" data-label="Live camera">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 11l6-3.5v9l-6-3.5z"/></svg>
+    <span class="sr-only">Live camera</span>
+  </a>
   <a href="#stats" data-section="stats" data-label="Stats" class="is-active" aria-current="page">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 18V10M10 18V6M16 18v-7M22 18V8"/></svg>
     <span class="sr-only">Stats</span>
@@ -393,6 +410,23 @@ body.kpi-modal-open .dock {
       <p class="dash-sub">Hover any stat, chart, or the table to expand it. Close to return.</p>
     </div>
   </div>
+
+  <section class="panel" id="live">
+    <div class="panel-head">
+      <div class="panel-title">Live tank camera</div>
+      <a class="live-open" href="/live" target="_blank" rel="noopener">Full-screen view</a>
+    </div>
+    <div class="live-frame">
+      <img class="live-video" id="liveVideo" alt="Live tank camera with fish detections" hidden>
+      <div class="live-note" id="liveNote"><b>Connecting to the camera…</b></div>
+    </div>
+    <div class="live-meta">
+      <span class="live-dot" id="liveDot" aria-hidden="true"></span>
+      <span id="liveStatus">Starting</span>
+      <span class="live-sep" aria-hidden="true">·</span>
+      <span id="liveCount">—</span>
+    </div>
+  </section>
 
   <div class="kpi-row" role="toolbar" aria-label="Tank metrics">
     <button type="button" class="kpi-card" data-metric="view" aria-pressed="false">
@@ -904,13 +938,82 @@ document.querySelector('.kpi-row').addEventListener('keydown', function (e) {
   selectMetric(next.getAttribute('data-metric'), true);
 });
 
-fetch(API.dashboard)
-  .then(function (res) { if (!res.ok) throw new Error('dashboard ' + res.status); return res.json(); })
-  .then(applyDashboard)
-  .catch(function () {
-    document.getElementById('updatedChip').innerHTML =
-      '<span class="dash-chip-dot" aria-hidden="true"></span>Model feed unavailable';
-  });
+/* The tracker keeps running, so refresh the readout rather than loading once. */
+function loadDashboard() {
+  const modal = document.getElementById('kpiModal');
+  if (modal && !modal.hidden) return Promise.resolve();   // don't redraw under an open panel
+  return fetch(API.dashboard, { cache: 'no-store' })
+    .then(function (res) { if (!res.ok) throw new Error('dashboard ' + res.status); return res.json(); })
+    .then(applyDashboard)
+    .catch(function () {
+      document.getElementById('updatedChip').innerHTML =
+        '<span class="dash-chip-dot" aria-hidden="true"></span>Model feed unavailable';
+    });
+}
+loadDashboard();
+setInterval(loadDashboard, 10000);
+
+/* Live camera panel: start the video once the tracker reports frames. */
+(function () {
+  const video = document.getElementById('liveVideo');
+  const note = document.getElementById('liveNote');
+  const dot = document.getElementById('liveDot');
+  const statusText = document.getElementById('liveStatus');
+  const countText = document.getElementById('liveCount');
+  const STREAMING = ['LIVE', 'PLAYBACK'];
+  let streaming = false;
+
+  function show(message) {
+    note.innerHTML = '<b>' + message + '</b>';
+    note.hidden = false;
+    if (streaming) { video.hidden = true; video.removeAttribute('src'); streaming = false; }
+  }
+
+  function apply(state) {
+    if (!state.configured) {
+      dot.className = 'live-dot';
+      statusText.textContent = 'No camera configured';
+      countText.textContent = 'Showing sample data';
+      show('No camera configured — copy .env.example to .env');
+      return;
+    }
+    const source = state.source || {};
+    const vision = state.vision || {};
+    const counts = state.counts || {};
+    const live = STREAMING.indexOf(source.status) >= 0;
+
+    if (live) {
+      if (!streaming) { video.src = '/api/video.mjpg'; streaming = true; }
+      video.hidden = false;
+      note.hidden = true;
+    } else {
+      show(source.status === 'CONNECTING' ? 'Connecting to the camera…' : 'Camera offline — retrying');
+    }
+
+    dot.className = 'live-dot ' + (live ? 'is-live' : 'is-warn');
+    if (live && vision.phase === 'LEARNING') {
+      statusText.textContent = 'Learning the empty tank · ' + Math.round((vision.progress || 0) * 100) + '%';
+    } else if (live) {
+      statusText.textContent = 'Live · ' + (vision.fps || 0).toFixed(1) + ' fps · ' + (vision.latency_ms || 0) + ' ms';
+    } else {
+      statusText.textContent = source.status || 'Offline';
+    }
+    countText.textContent = (counts.onscreen || 0) + ' in view · ' + (counts.known || 0) + ' identified';
+  }
+
+  function poll() {
+    fetch('/api/vision', { cache: 'no-store' })
+      .then(function (res) { if (!res.ok) throw new Error('vision ' + res.status); return res.json(); })
+      .then(apply)
+      .catch(function () {
+        dot.className = 'live-dot is-warn';
+        statusText.textContent = 'Camera feed unavailable';
+        show('Camera feed unavailable');
+      })
+      .then(function () { setTimeout(poll, 2000); });
+  }
+  poll();
+})();
 </script>
 </body>
 </html>
