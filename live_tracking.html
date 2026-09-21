@@ -339,6 +339,8 @@ body.kpi-modal-open .dock {
 }
 
 /* live camera panel */
+/* `display` rules below would otherwise beat the hidden attribute's default styling */
+.live-video[hidden], .live-note[hidden] { display: none !important; }
 .live-frame { position: relative; border-radius: 16px; overflow: hidden; background: #050B1C; border: 1px solid var(--rule); aspect-ratio: 16 / 9; }
 .live-video { width: 100%; height: 100%; object-fit: contain; display: block; }
 .live-note { position: absolute; inset: 0; display: grid; place-content: center; gap: 6px; text-align: center; padding: 20px; font-family: var(--ui); font-size: 0.82rem; color: var(--ink-ghost); }
