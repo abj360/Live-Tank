@@ -1,3 +1,8 @@
 flask>=3.0
 flask-cors>=4.0
 gunicorn>=21.0
+
+# live tracking (live_tank/)
+numpy>=1.26
+opencv-python-headless>=4.9
+scipy>=1.11
