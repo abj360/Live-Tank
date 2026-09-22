@@ -300,14 +300,21 @@ _SNAPSHOT = {
 
 
 def get_snapshot():
-    """Live payload from the tank camera, or the placeholder if there is none."""
-    try:
-        from live_tank import dashboard
+    """Live payload: from a remote tracker, from a local one, else the sample."""
+    import remote
 
-        if dashboard.is_live():
-            return dashboard.snapshot()
-    except Exception:  # no OpenCV, no camera, nothing tracked yet
-        log.exception("Live dashboard unavailable; serving placeholder")
+    if remote.enabled():
+        data = remote.fetch_json("/api/dashboard")
+        if data:
+            return data
+    else:
+        try:
+            from live_tank import dashboard
+
+            if dashboard.is_live():
+                return dashboard.snapshot()
+        except Exception:  # no OpenCV, no camera, nothing tracked yet
+            log.exception("Live dashboard unavailable; serving placeholder")
     return deepcopy(_SNAPSHOT)
 
 

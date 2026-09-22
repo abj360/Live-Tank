@@ -1,0 +1,6 @@
+# Extra packages for the machine that watches the tank and runs the tracker.
+# Install alongside requirements.txt:
+#   pip install -r requirements.txt -r requirements-tracker.txt
+numpy>=1.26
+opencv-python-headless>=4.9
+scipy>=1.11
