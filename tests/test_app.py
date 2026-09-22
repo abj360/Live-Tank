@@ -1,8 +1,17 @@
 import os
+import pathlib
+import tempfile
 import unittest
+import unittest.mock
 
 # The camera stays shut during tests, so the dashboard serves placeholder data.
 os.environ["LIVE_TANK_OFFLINE"] = "1"
+
+import remote
+
+# Tests decide for themselves whether there is a remote tracker, so ignore the
+# committed tracker_origin.txt.
+remote.ORIGIN_FILE = pathlib.Path(tempfile.gettempdir()) / "live-tank-no-such-origin"
 
 from app import app
 
@@ -132,6 +141,31 @@ class RemoteTrackerTests(unittest.TestCase):
 
     def tearDown(self):
         os.environ.pop("TRACKER_ORIGIN", None)
+
+    def test_a_machine_with_its_own_camera_never_proxies(self):
+        remote._own_camera.cache_clear()
+        try:
+            with unittest.mock.patch.object(remote, "_own_camera", lambda: True):
+                self.assertFalse(remote.enabled())
+        finally:
+            remote._own_camera.cache_clear()
+
+    def test_origin_file_is_used_when_env_is_unset(self):
+        os.environ.pop("TRACKER_ORIGIN", None)
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as handle:
+            handle.write("# a comment\nhttps://tank.example.org/\n")
+            path = handle.name
+        original = remote.ORIGIN_FILE
+        try:
+            remote.ORIGIN_FILE = pathlib.Path(path)
+            self.assertEqual(remote.origin(), "https://tank.example.org")
+        finally:
+            remote.ORIGIN_FILE = original
+            os.unlink(path)
+
+    def test_env_beats_the_file(self):
+        os.environ["TRACKER_ORIGIN"] = "https://from-env.example.com/"
+        self.assertEqual(remote.origin(), "https://from-env.example.com")
 
     def test_config_switches_to_snapshots(self):
         data = self.client.get("/api/config").get_json()
