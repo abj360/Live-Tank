@@ -93,7 +93,9 @@ class LiveViewTests(unittest.TestCase):
 
 
 class TokenGuardTests(unittest.TestCase):
-    """With LIVE_TANK_TOKEN set, /api needs the token but the pages do not."""
+    """LIVE_TANK_TOKEN guards traffic arriving through a tunnel, not the LAN."""
+
+    TUNNELLED = {"X-Forwarded-For": "203.0.113.9"}
 
     def setUp(self):
         self.client = app.test_client()
@@ -102,16 +104,23 @@ class TokenGuardTests(unittest.TestCase):
     def tearDown(self):
         os.environ.pop("LIVE_TANK_TOKEN", None)
 
-    def test_api_requires_the_token(self):
-        self.assertEqual(self.client.get("/api/vision").status_code, 401)
+    def test_tunnelled_api_needs_the_token(self):
+        self.assertEqual(self.client.get("/api/vision", headers=self.TUNNELLED).status_code, 401)
 
-    def test_token_in_header_or_query_is_accepted(self):
-        self.assertEqual(self.client.get("/api/vision", headers={"X-Tank-Token": "secret-token"}).status_code, 200)
-        self.assertEqual(self.client.get("/api/vision?t=secret-token").status_code, 200)
+    def test_tunnelled_token_in_header_or_query_is_accepted(self):
+        headers = {**self.TUNNELLED, "X-Tank-Token": "secret-token"}
+        self.assertEqual(self.client.get("/api/vision", headers=headers).status_code, 200)
+        self.assertEqual(self.client.get("/api/vision?t=secret-token", headers=self.TUNNELLED).status_code, 200)
 
-    def test_pages_stay_open(self):
+    def test_tunnel_does_not_serve_the_site(self):
+        self.assertEqual(self.client.get("/", headers=self.TUNNELLED).status_code, 404)
+        self.assertEqual(self.client.get("/live", headers=self.TUNNELLED).status_code, 404)
+
+    def test_the_lab_network_is_not_asked_for_a_token(self):
         self.assertEqual(self.client.get("/").status_code, 200)
         self.assertEqual(self.client.get("/live").status_code, 200)
+        self.assertEqual(self.client.get("/api/vision").status_code, 200)
+        self.assertEqual(self.client.get("/api/dashboard").status_code, 200)
 
 
 class RemoteTrackerTests(unittest.TestCase):
