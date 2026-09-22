@@ -96,6 +96,11 @@ class VisionService:
                 yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
                        + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n")
 
+    def snapshot(self):
+        """Latest annotated frame as a single small JPEG, or None."""
+        pipeline = self.start()
+        return pipeline.snapshot() if pipeline is not None else None
+
     def set_layer(self, name, on):
         pipeline = self.start()
         if pipeline is not None:

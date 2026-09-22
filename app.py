@@ -1,10 +1,20 @@
 """Live Tank: the tracking dashboard and the live camera, in one Flask app.
 
+The same app runs in two places:
+
+* On the machine that can see the tank, where it runs the tracker itself.
+  Set LIVE_TANK_TOKEN there and every /api call must carry it.
+* On a public host (Vercel, Render) that cannot reach the tank. Set
+  TRACKER_ORIGIN and TRACKER_TOKEN and it fetches video snapshots and data
+  from the first one, server side, so the token never reaches the browser.
+
 Routes
   /                     the dashboard site (live_tracking.html)
   /live                 full-screen camera view with the tracking overlay
-  /api/video.mjpg       annotated camera stream
-  /api/mask.mjpg        detector's foreground mask
+  /api/config           how this instance serves video: stream or snapshots
+  /api/video.mjpg       annotated camera stream (tracker machine only)
+  /api/mask.mjpg        detector's foreground mask (tracker machine only)
+  /api/snapshot.jpg     latest annotated frame, one JPEG
   /api/vision           tracker state for the live panel
   /api/layers           POST: turn overlay layers on and off
   /api/relearn          POST: relearn the empty tank background
@@ -17,9 +27,10 @@ Routes
 import logging
 import os
 
-from flask import Flask, Response, jsonify, render_template, request, send_from_directory
+from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory
 from flask_cors import CORS
 
+import remote
 import tracking
 from live_tank.service import service
 
@@ -32,6 +43,27 @@ CORS(app)
 # Warm the camera up at boot so the first visitor sees live numbers, not the
 # sample data. No-op when no camera is configured or LIVE_TANK_OFFLINE=1.
 service.start()
+
+
+def local_token():
+    """Token this instance demands on its own /api routes (tracker machine)."""
+    return os.environ.get("LIVE_TANK_TOKEN", "")
+
+
+@app.before_request
+def guard_api():
+    """Public URL of the tracker: only callers holding the token get data.
+
+    The site's own pages are never guarded, and an instance that proxies to a
+    remote tracker does not guard either: its visitors are the public.
+    """
+    wanted = local_token()
+    if not wanted or remote.enabled() or not request.path.startswith("/api/"):
+        return None
+    given = request.headers.get("X-Tank-Token") or request.args.get("t", "")
+    if given != wanted:
+        abort(401)
+    return None
 
 
 # ---- the site ---------------------------------------------------------------
@@ -47,9 +79,19 @@ def live_view():
 
 # ---- live camera ------------------------------------------------------------
 def _stream(mask):
+    if remote.enabled():                    # a serverless host cannot relay a stream
+        abort(404)
     return Response(service.frames(mask=mask),
                     mimetype="multipart/x-mixed-replace; boundary=frame",
                     headers={"Cache-Control": "no-store"})
+
+
+@app.route("/api/config")
+def api_config():
+    """Tells the page whether to open the stream or poll snapshots."""
+    return jsonify({"stream": "snapshot" if remote.enabled() else "mjpeg",
+                    "remote": remote.enabled(),
+                    "label": service.settings.label})
 
 
 @app.route("/api/video.mjpg")
@@ -62,8 +104,26 @@ def api_mask():
     return _stream(mask=True)
 
 
+@app.route("/api/snapshot.jpg")
+def api_snapshot():
+    """One annotated frame. Used by viewers that cannot take the MJPEG stream."""
+    if remote.enabled():
+        body, content_type = remote.fetch("/api/snapshot.jpg")
+        if body is None:
+            abort(502)
+        return Response(body, mimetype=content_type, headers={"Cache-Control": "no-store"})
+    frame = service.snapshot()
+    if frame is None:
+        abort(503)
+    return Response(frame, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
 @app.route("/api/vision")
 def api_vision():
+    if remote.enabled():
+        state = remote.fetch_json("/api/vision")
+        return jsonify(state or {"configured": False, "error": "tracker unreachable",
+                                 "source": {"name": "Tracker offline", "status": "NO CAMERA"}})
     return jsonify(service.state())
 
 

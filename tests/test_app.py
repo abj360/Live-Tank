@@ -83,6 +83,66 @@ class LiveViewTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/layers", json={"trails": False}).status_code, 200)
         self.assertEqual(self.client.post("/api/relearn").status_code, 200)
 
+    def test_config_reports_streaming_mode(self):
+        data = self.client.get("/api/config").get_json()
+        self.assertEqual(data["stream"], "mjpeg")     # no remote tracker configured
+        self.assertFalse(data["remote"])
+
+    def test_snapshot_unavailable_without_a_camera(self):
+        self.assertEqual(self.client.get("/api/snapshot.jpg").status_code, 503)
+
+
+class TokenGuardTests(unittest.TestCase):
+    """With LIVE_TANK_TOKEN set, /api needs the token but the pages do not."""
+
+    def setUp(self):
+        self.client = app.test_client()
+        os.environ["LIVE_TANK_TOKEN"] = "secret-token"
+
+    def tearDown(self):
+        os.environ.pop("LIVE_TANK_TOKEN", None)
+
+    def test_api_requires_the_token(self):
+        self.assertEqual(self.client.get("/api/vision").status_code, 401)
+
+    def test_token_in_header_or_query_is_accepted(self):
+        self.assertEqual(self.client.get("/api/vision", headers={"X-Tank-Token": "secret-token"}).status_code, 200)
+        self.assertEqual(self.client.get("/api/vision?t=secret-token").status_code, 200)
+
+    def test_pages_stay_open(self):
+        self.assertEqual(self.client.get("/").status_code, 200)
+        self.assertEqual(self.client.get("/live").status_code, 200)
+
+
+class RemoteTrackerTests(unittest.TestCase):
+    """With TRACKER_ORIGIN set the site proxies instead of tracking itself."""
+
+    def setUp(self):
+        self.client = app.test_client()
+        os.environ["TRACKER_ORIGIN"] = "https://tank.example.com"
+
+    def tearDown(self):
+        os.environ.pop("TRACKER_ORIGIN", None)
+
+    def test_config_switches_to_snapshots(self):
+        data = self.client.get("/api/config").get_json()
+        self.assertEqual(data["stream"], "snapshot")
+        self.assertTrue(data["remote"])
+
+    def test_stream_routes_are_not_served(self):
+        self.assertEqual(self.client.get("/api/video.mjpg").status_code, 404)
+        self.assertEqual(self.client.get("/api/mask.mjpg").status_code, 404)
+
+    def test_unreachable_tracker_is_reported_not_crashed(self):
+        data = self.client.get("/api/vision").get_json()
+        self.assertFalse(data["configured"])
+        self.assertEqual(data["source"]["status"], "NO CAMERA")
+        self.assertEqual(self.client.get("/api/snapshot.jpg").status_code, 502)
+
+    def test_dashboard_falls_back_to_sample_data(self):
+        data = self.client.get("/api/dashboard").get_json()
+        self.assertEqual(data["source"], "placeholder")
+
 
 class TrackingApiTests(unittest.TestCase):
     def setUp(self):
