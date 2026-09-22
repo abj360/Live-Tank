@@ -1,19 +1,22 @@
-"""Placeholder tracking payload for the Live Tank dashboard.
+"""Dashboard payload for the Live Tank site.
 
-Swap `get_snapshot()` for live model output. Keep the same keys so
-the frontend can stay on /api/dashboard, /api/stats, /api/metrics/<id>,
-/api/tracks, and /api/activity without HTML changes.
+Served live from the tank camera when one is reachable (see live_tank/), and
+from the placeholder below otherwise, so the site still runs on a host that
+cannot see the tank. The keys are identical either way, so the page stays on
+/api/dashboard, /api/stats, /api/metrics/<id>, /api/tracks and /api/activity.
 
-Expected model mapping:
-  cards[].value / spark     <- counts, speeds, confidence, unique IDs
+  cards[].value / spark     <- counts, speeds, confidence, identities
   metrics[id].series        <- 12-point window for the selected KPI chart
   tracks[]                  <- per-fish rows for the log table
   comparison.movement       <- tank-wide avg speed over the window
-  comparison.activity       <- tank-wide activity index (0-100)
+  comparison.activity       <- share of fish that are swimming
   comparison.by_fish        <- per-fish movement vs activity bars
 """
 
+import logging
 from copy import deepcopy
+
+log = logging.getLogger(__name__)
 
 PLACEHOLDER_SOURCE = "placeholder"
 
@@ -297,11 +300,14 @@ _SNAPSHOT = {
 
 
 def get_snapshot():
-    """Return the dashboard payload.
+    """Live payload from the tank camera, or the placeholder if there is none."""
+    try:
+        from live_tank import dashboard
 
-    Replace the body of this function with model inference. Return a dict
-    with the same keys as PLACEHOLDER_SNAPSHOT.
-    """
+        if dashboard.is_live():
+            return dashboard.snapshot()
+    except Exception:  # no OpenCV, no camera, nothing tracked yet
+        log.exception("Live dashboard unavailable; serving placeholder")
     return deepcopy(_SNAPSHOT)
 
 

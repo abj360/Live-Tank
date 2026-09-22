@@ -1,4 +1,8 @@
+import os
 import unittest
+
+# The camera stays shut during tests, so the dashboard serves placeholder data.
+os.environ["LIVE_TANK_OFFLINE"] = "1"
 
 from app import app
 
@@ -38,8 +42,15 @@ class LiveTankPageTests(unittest.TestCase):
         self.assertIn("/api/stats", html)
         self.assertIn("/api/tracks", html)
         self.assertIn("/api/activity", html)
-        self.assertNotIn("View Live Feed", html)
-        self.assertNotIn('id="tankFeed"', html)
+
+    def test_index_embeds_the_live_camera(self):
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn('id="live"', html)
+        self.assertIn('id="liveVideo"', html)
+        self.assertIn("/api/video.mjpg", html)
+        self.assertIn("/api/vision", html)
+        self.assertIn('href="/live"', html)
+        self.assertIn('href="#live"', html)
 
     def test_index_omits_aquaguard(self):
         html = self.client.get("/").get_data(as_text=True)
@@ -49,6 +60,28 @@ class LiveTankPageTests(unittest.TestCase):
     def test_predict_routes_gone(self):
         self.assertEqual(self.client.get("/api/predict_latest").status_code, 404)
         self.assertEqual(self.client.post("/api/predict_manual").status_code, 404)
+
+
+class LiveViewTests(unittest.TestCase):
+    def setUp(self):
+        self.client = app.test_client()
+
+    def test_full_screen_view_renders(self):
+        res = self.client.get("/live")
+        self.assertEqual(res.status_code, 200)
+        html = res.get_data(as_text=True)
+        self.assertIn("/api/video.mjpg", html)
+        self.assertIn('id="spark"', html)
+        self.assertIn('id="mask"', html)
+
+    def test_vision_state_reports_no_camera_when_offline(self):
+        data = self.client.get("/api/vision").get_json()
+        self.assertFalse(data["configured"])
+        self.assertEqual(data["source"]["status"], "NO CAMERA")
+
+    def test_layer_and_relearn_routes_accept_posts(self):
+        self.assertEqual(self.client.post("/api/layers", json={"trails": False}).status_code, 200)
+        self.assertEqual(self.client.post("/api/relearn").status_code, 200)
 
 
 class TrackingApiTests(unittest.TestCase):
@@ -96,3 +129,52 @@ class TrackingApiTests(unittest.TestCase):
         activity = self.client.get("/api/activity").get_json()["comparison"]
         self.assertEqual(len(activity["movement"]["values"]), len(activity["activity"]["values"]))
         self.assertEqual(activity["by_fish"][0]["id"], "Fish 03")
+
+
+class DashboardMappingTests(unittest.TestCase):
+    """The live payload must keep the shape the page expects."""
+
+    def test_zones_and_trend(self):
+        from live_tank import dashboard
+
+        self.assertEqual(dashboard.zone_of({"pos": (0.5, 0.1)}), "Surface")
+        self.assertEqual(dashboard.zone_of({"pos": (0.5, 0.5)}), "Mid-water")
+        self.assertEqual(dashboard.zone_of({"pos": (0.5, 0.9)}), "Bottom")
+        self.assertEqual(dashboard.trend([2, 4]), (100.0, "up"))
+        self.assertEqual(dashboard.trend([4, 2]), (50.0, "down"))
+        self.assertEqual(dashboard.trend([]), (0.0, "up"))
+        self.assertEqual(len(dashboard.axis_labels()), 4)
+
+    def test_card_values(self):
+        from live_tank import dashboard
+        from live_tank.config import load_settings
+
+        settings = load_settings()
+        fish = [
+            {"speed_px": 40, "speed": 40, "confidence": 98},
+            {"speed_px": 10, "speed": 10, "confidence": 90},
+        ]
+        values = dashboard.card_values(fish, {"onscreen": 2, "known": 3}, settings)
+        self.assertEqual(values["view"], 2)
+        self.assertEqual(values["tracks"], 3)
+        self.assertEqual(values["movement"], 25)
+        self.assertEqual(values["peak"], 40)
+        self.assertEqual(values["confidence"], 94)   # percent, not 9400
+
+    def test_fish_row_shape(self):
+        from live_tank import dashboard
+        from live_tank.config import load_settings
+
+        row = dashboard._fish_row(
+            {"id": 3, "conf": 0.91, "speed": 5, "age_s": 90, "matched": True,
+             "pos": (0.4, 0.8), "heading": 200, "size": [100, 40]},
+            load_settings())
+        self.assertEqual(row["id"], "LMB 03")
+        self.assertEqual(row["zone"], "Bottom")
+        self.assertEqual(row["confidence"], 91)
+        self.assertEqual(row["status"], "idle")
+        self.assertEqual(row["dwell_min"], 1.5)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ label }} Vision · Camera 1</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='live.css') }}">
+</head>
+<body>
+  <main class="stage" id="stage">
+    <img id="video" class="video" src="/api/video.mjpg" alt="Camera 1 with {{ label }} detections">
+  </main>
+
+  <div class="hud" id="hud">
+    <!-- top left -->
+    <div class="brand glass corner-tl">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">{{ label }}<span class="brand-sub">VISION</span></span>
+    </div>
+
+    <!-- top right: fish on screen over time (resize from the bottom-left corner) -->
+    <section class="glass panel corner-tr history" id="history-panel" data-panel-id="history">
+      <header class="panel-head">
+        <h2>{{ label }} on screen</h2>
+        <span class="now mono" id="spark-now">0</span>
+        <button class="mini-btn" type="button" data-collapse aria-expanded="true" title="Minimize graph">
+          <svg class="i-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg>
+          <svg class="i-max" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>
+          <span class="sr">Minimize or restore graph</span>
+        </button>
+      </header>
+      <div class="panel-body">
+        <div class="spark" id="spark">
+          <svg id="spark-svg" role="img" aria-label="Fish on screen, last 2 minutes"></svg>
+          <div class="spark-tip mono" id="spark-tip" hidden></div>
+        </div>
+        <div class="spark-axis mono"><span>2 min ago</span><span>now</span></div>
+      </div>
+      <span class="resize-handle at-bl" data-resize title="Drag to resize" aria-hidden="true"></span>
+    </section>
+
+    <!-- bottom left: what the detector sees (resize from the top-right corner) -->
+    <section class="glass panel corner-bl mask-panel" id="mask-panel" data-panel-id="mask">
+      <header class="panel-head">
+        <h2>Foreground mask</h2>
+        <button class="mini-btn" type="button" data-collapse aria-expanded="true" title="Minimize mask">
+          <svg class="i-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg>
+          <svg class="i-max" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>
+          <span class="sr">Minimize or restore mask</span>
+        </button>
+      </header>
+      <div class="panel-body">
+        <img class="mask" id="mask" alt="Foreground mask with detection boxes">
+      </div>
+      <span class="resize-handle at-tr" data-resize title="Drag to resize" aria-hidden="true"></span>
+    </section>
+
+    <!-- bottom right: eye reveals the tool icons; each icon opens its panel -->
+    <div class="corner-br">
+      <section class="glass panel popover" data-panel-body="tracked" hidden>
+        <h2>Tracked now</h2>
+        <ol class="roster" id="roster"></ol>
+        <p class="empty" id="roster-empty">No fish in view</p>
+      </section>
+
+      <section class="glass panel popover" data-panel-body="missing" hidden>
+        <h2>Out of view <span class="hint">keeps its ID when it returns</span></h2>
+        <ul class="missing" id="missing"></ul>
+        <p class="empty" id="missing-empty">Every identified fish is in view</p>
+      </section>
+
+      <section class="glass panel popover" data-panel-body="pipeline" hidden>
+        <h2>Vision pipeline</h2>
+        <dl class="pipeline mono">
+          <dt>Capture</dt><dd id="p-capture">—</dd>
+          <dt>Detect</dt><dd id="p-detect">—</dd>
+          <dt>Filter</dt><dd id="p-filter">—</dd>
+          <dt>DeepSORT</dt><dd id="p-track">—</dd>
+          <dt>Re-ID</dt><dd id="p-reid">—</dd>
+          <dt>Fish known</dt><dd id="p-known">—</dd>
+          <dt>Processing</dt><dd id="p-fps">—</dd>
+          <dt>Latency</dt><dd id="p-latency">—</dd>
+        </dl>
+      </section>
+
+      <section class="glass panel popover" data-panel-body="layers" hidden>
+        <h2>Layers</h2>
+        <div class="layers" id="layers">
+          <label><input type="checkbox" data-layer="boxes"><span>Tracking boxes</span><kbd>B</kbd></label>
+          <label><input type="checkbox" data-layer="labels"><span>{{ label }} labels</span><kbd>L</kbd></label>
+          <label><input type="checkbox" data-layer="trails"><span>Swim trails</span><kbd>T</kbd></label>
+          <label><input type="checkbox" data-layer="vectors"><span>Kalman motion vectors</span><kbd>V</kbd></label>
+          <label><input type="checkbox" data-layer="tentative"><span>Detecting / assigning ID</span><kbd>A</kbd></label>
+          <label><input type="checkbox" data-layer="detections"><span>Raw detections</span><kbd>D</kbd></label>
+          <label><input type="checkbox" data-layer="rejected"><span>Rejected: edges, reflections, dark objects</span><kbd>X</kbd></label>
+          <label><input type="checkbox" data-layer="mask"><span>Mask overlay</span><kbd>M</kbd></label>
+        </div>
+        <button class="btn" id="relearn" type="button">Relearn empty tank</button>
+      </section>
+
+      <nav class="dock" aria-label="Tools">
+        <div class="dock-tools" id="dock-tools">
+          <button class="glass icon-btn" type="button" data-panel="tracked" aria-expanded="false" title="Tracked now" tabindex="-1">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" class="fill"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg>
+            <span class="badge mono" id="b-tracked" hidden>0</span>
+            <span class="sr">Tracked now</span>
+          </button>
+          <button class="glass icon-btn" type="button" data-panel="missing" aria-expanded="false" title="Out of view" tabindex="-1">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5M8.5 11h5"/></svg>
+            <span class="badge mono" id="b-missing" hidden>0</span>
+            <span class="sr">Out of view</span>
+          </button>
+          <button class="glass icon-btn" type="button" data-panel="pipeline" aria-expanded="false" title="Vision pipeline" tabindex="-1">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="9" width="5" height="6" rx="1"/><rect x="16.5" y="9" width="5" height="6" rx="1"/><path d="M7.5 12h9M13 9l3 3-3 3"/></svg>
+            <span class="sr">Vision pipeline</span>
+          </button>
+          <button class="glass icon-btn" type="button" data-panel="layers" aria-expanded="false" title="Layers" tabindex="-1">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12.5l9 5 9-5M3 16.5l9 5 9-5"/></svg>
+            <span class="sr">Layers</span>
+          </button>
+        </div>
+        <button class="glass icon-btn" id="toggle-tools" type="button" aria-expanded="false" aria-controls="dock-tools" title="Show tools">
+          <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 20L20 4"/></svg>
+          <span class="sr">Show or hide tools</span>
+        </button>
+        <button class="glass icon-btn" id="fullscreen" type="button" title="Full screen (F)" aria-label="Full screen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+      </nav>
+    </div>
+  </div>
+
+  <div class="notice glass" id="learning" hidden>
+    <strong>Learning the empty tank</strong>
+    <span>Hold the camera still for a few seconds</span>
+    <div class="progress"><i id="learning-bar"></i></div>
+  </div>
+
+  <div class="notice glass warn" id="offline" hidden>
+    <strong id="offline-title">Reconnecting to Camera 1</strong>
+    <span id="offline-text">The stream dropped; retrying automatically</span>
+  </div>
+
+  <script src="{{ url_for('static', filename='live.js') }}"></script>
+</body>
+</html>
