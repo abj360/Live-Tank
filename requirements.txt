@@ -1,8 +1,5 @@
+# The website. Enough to serve the dashboard and to proxy a remote tracker,
+# so cloud hosts stay inside their function size limits.
 flask>=3.0
 flask-cors>=4.0
 gunicorn>=21.0
-
-# live tracking (live_tank/)
-numpy>=1.26
-opencv-python-headless>=4.9
-scipy>=1.11

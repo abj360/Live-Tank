@@ -23,6 +23,9 @@ N_INIT = 5                 # hits before a track is confirmed (~0.25 s at 20 fps
 TRAIL_LENGTH = 48
 TRAIL_SMOOTHING = 0.3      # EMA weight of the newest trail point
 MASK_PREVIEW_WIDTH = 384
+SNAPSHOT_WIDTH = 960       # small annotated frame for remote viewers
+SNAPSHOT_QUALITY = 70
+SNAPSHOT_KEEP_S = 15.0     # keep encoding them for this long after the last request
 STALE_AFTER_S = 3.0
 BOOT_ID = str(int(time.time()))  # open pages reload when this changes (server restarted)
 
@@ -62,6 +65,8 @@ class VisionPipeline(threading.Thread):
         self._cond = threading.Condition()
         self._jpeg = None
         self._mask_jpeg = None
+        self._snapshot_bytes = None
+        self._snapshot_until = 0.0
         self._seq = 0
         self._snapshot = {"counts": {"onscreen": 0, "detections": 0, "candidates": 0,
                                      "reflections": 0, "edges": 0, "dark": 0, "reseeds": 0,
@@ -173,6 +178,7 @@ class VisionPipeline(threading.Thread):
 
         ok, jpeg = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, self.settings.jpeg_quality])
         mask_jpeg = self._mask_preview(small_mask, blobs, [b for b, _reason in rejected])
+        snapshot = self._snapshot_jpeg(display)
         self.latency = time.time() - captured_at
         if not ok:
             return
@@ -200,6 +206,8 @@ class VisionPipeline(threading.Thread):
         with self._cond:
             self._jpeg = jpeg.tobytes()
             self._mask_jpeg = mask_jpeg
+            if snapshot is not None:
+                self._snapshot_bytes = snapshot
             self._seq += 1
             self._cond.notify_all()
 
@@ -308,6 +316,25 @@ class VisionPipeline(threading.Thread):
             "age_s": round(now - self.identities.first_seen(identity, now), 1) if identity is not None else 0,
             "size": [round(sides[0] * to_source_px), round(sides[1] * to_source_px)],
         }
+
+    def snapshot(self):
+        """Latest small annotated frame, for viewers that cannot take the stream.
+
+        Only encoded while someone keeps asking, so the local stream pays
+        nothing for it when nobody is watching remotely.
+        """
+        self._snapshot_until = time.time() + SNAPSHOT_KEEP_S
+        with self._cond:
+            if self._snapshot_bytes is None:
+                self._cond.wait(timeout=2.0)
+            return self._snapshot_bytes
+
+    def _snapshot_jpeg(self, display):
+        if time.time() > self._snapshot_until:
+            return None
+        small = resize_to_width(display, min(SNAPSHOT_WIDTH, display.shape[1]))
+        ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, SNAPSHOT_QUALITY])
+        return buf.tobytes() if ok else None
 
     def _mask_preview(self, mask, blobs, reflections):
         h, w = mask.shape[:2]

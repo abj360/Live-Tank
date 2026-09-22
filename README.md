@@ -17,11 +17,14 @@ so it can be deployed anywhere.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt -r requirements-tracker.txt
 
 cp .env.example .env          # add the camera host, user and password
 .venv/bin/python app.py       # http://127.0.0.1:5000
 ```
+
+Without `requirements-tracker.txt` the site still runs; it just serves the
+sample dashboard instead of opening a camera.
 
 Run the tests with `.venv/bin/python -m unittest discover tests`.
 
@@ -54,6 +57,7 @@ all in `live_tank/`:
 
 ```
 app.py                  Flask routes: site, live video, dashboard APIs
+remote.py               fetching video and data from a tracker on another machine
 tracking.py             dashboard payload: live when a camera answers, else sample data
 live_tracking.html      the dashboard page (markup, styles and script in one file)
 live_tank/
@@ -83,12 +87,16 @@ See `.env.example` for the full list. The common ones:
 | `FISH_LABEL` | label drawn on each fish (default `LMB`) |
 | `PX_PER_CM` | set once the tank is calibrated to report cm/s instead of px/s |
 | `LIVE_TANK_OFFLINE` | `1` never opens the camera (used by the tests) |
+| `LIVE_TANK_TOKEN` | on the tracker: token every `/api` call must carry |
+| `TRACKER_ORIGIN`, `TRACKER_TOKEN` | on the public site: where the tracker is, and its token |
 
 ## HTTP API
 
 | Route | Returns |
 | --- | --- |
-| `GET /api/video.mjpg` | annotated camera stream (MJPEG) |
+| `GET /api/config` | whether this instance streams video or serves snapshots |
+| `GET /api/video.mjpg` | annotated camera stream (MJPEG), tracker machine only |
+| `GET /api/snapshot.jpg` | latest annotated frame, one JPEG |
 | `GET /api/mask.mjpg` | detector foreground mask (MJPEG) |
 | `GET /api/vision` | tracker state: source, counts, per-fish rows, layers |
 | `POST /api/layers` | turn overlay layers on and off, e.g. `{"trails": false}` |
@@ -101,10 +109,55 @@ See `.env.example` for the full list. The common ones:
 
 ## Deployment
 
-`Procfile` and `render.yaml` run the app under gunicorn; `vercel.json` covers a
-Vercel deployment. A host that cannot reach the tank's network serves the
-sample dashboard and reports "No camera configured" on the live panel — run the
-app on the tank's LAN for live video.
+The same app runs in two roles.
+
+**1. The tracker**, on a machine that can see the tank. It opens the camera,
+runs the tracking and serves the video. Install both requirement files and set
+`LIVE_TANK_TOKEN` whenever the machine is reachable from outside your network:
+
+```bash
+pip install -r requirements.txt -r requirements-tracker.txt
+python app.py
+```
+
+**2. The public site** (Vercel, Render), which has no camera. `Procfile` and
+`render.yaml` run it under gunicorn; `vercel.json` covers Vercel. Point it at
+the tracker with two environment variables in the host's settings:
+
+| Variable | Value |
+| --- | --- |
+| `TRACKER_ORIGIN` | public URL of the tracker, e.g. `https://tank.example.com` |
+| `TRACKER_TOKEN` | the same string as the tracker's `LIVE_TANK_TOKEN` |
+
+The site then fetches the dashboard and video frames from the tracker **server
+side**, so the token never reaches a visitor's browser. Only `requirements.txt`
+is installed there, which keeps the deployment inside cloud function size
+limits — the vision packages stay in `requirements-tracker.txt`.
+
+With no `TRACKER_ORIGIN` the site serves the sample dashboard and says "No
+camera configured" on the live panel, so it always deploys cleanly.
+
+### Publishing the tracker
+
+The tracker sits on a private network, so give it a public URL with a tunnel,
+for example Cloudflare Tunnel:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:5000          # quick, random URL
+```
+
+Set `LIVE_TANK_TOKEN` on the tracker before doing this: the tunnel makes it
+reachable by anyone who has the URL.
+
+### Video on the public site
+
+A serverless host cannot relay a continuous MJPEG stream, so `/api/config`
+tells the page which way to take the video:
+
+- **`mjpeg`** — the tracker itself, or any host on the tank's network: the full
+  stream at camera rate.
+- **`snapshot`** — a site proxying a remote tracker: one annotated frame roughly
+  every 0.7 s, which keeps cloud bandwidth sane.
 
 Because the tracker keeps state in memory, run a single worker process.
 
